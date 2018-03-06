@@ -12,12 +12,12 @@ from json import loads
 import warnings
 warnings.filterwarnings("ignore")
 import time
-from collections import deque
+#from collections import deque
 
 
 
 #updateprice() for geting a instant ask and bit price
-#return (tick,askprice,bidprice,time.strftime("%c") to Trade()
+#return (tick,askprice,bidprice,time.strftime("%c")) to Trade()
 def updateprice(tick):
     url= "http://finance.yahoo.com/quote/" + tick +"/profile?p=" +tick
     soup = BeautifulSoup(requests.get(url, "lxml").content)
@@ -31,7 +31,8 @@ def updateprice(tick):
     return (newprice)
 
 
-#updateprice(ticker, askprice, bidprice) gets update price for stock right at the moment, and data type is tuple
+#updateprice(ticker, askprice, bidprice) gets update price for stock right at the moment, 
+#and data type is tuple
 #if quantity is positive, recorde add as buy stock with ask price
 #tup=(side,quantity,ticker,a,cost,time.strftime("%c")) gets data of executive trade
 #histlist.append(tup) add new trad to hist tuple list, data type is tuple  
@@ -108,28 +109,35 @@ def updatePL(newtup,pllist):
     temp=[i for i in pllist if i[0] == ticker]
     
     if not temp:
-        newpl=(ticker,quant,0.00,0.00,time, price) 
-        pllist.append(newpl) 
+            newpl=(ticker,quant,0.00,0.00,time, price) 
+            pllist.append(newpl) 
         
     else:
-        pllist= [i for i in pllist if i != temp[0]]
-        oticker,oinventry,oRpl,oUpl,otime,owap = temp[0]
-        inven=oinventry+quant
-        if(inven != 0 ):
-            wap=(owap*oinventry+price*quant)/inven
-            if quant<0:
-                Rpl=(owap-price)*quant
-                newpl=(ticker,inven,Rpl,0.0,otime, wap)
-                pllist.append(newpl)
+            pllist= [i for i in pllist if i != temp[0]]
+            oticker,oinventry,oRpl,oUpl,otime,owap = temp[0]
+            
+            #For RPL: if it is long position, selling uses bid price 
+            if quant<0 and oinventry>0:
+                Rpl=(price-owap)*min(abs(quant),abs(oinventry))
+                
+            #if it is short position, buying use ask price 
+            elif quant>0 and oinventry<0:
+                Rpl=(owap-price)*min(abs(quant),abs(oinventry))    
+            
             else:
-                newpl=(ticker,inven,oRpl,0.0,otime, wap)
-                pllist.append(newpl)
-        else:
-            Rpl=(owap-price)*quant
-      
+                Rpl=0.0
+         
+            #For wap (is absolute positive representing a signle price of share of buy and sell:
+            inven=oinventry+quant
+            if( inven!=0):
+                wap=(owap*oinventry+price*quant)/inven    
+            else:
+                wap=0.00
+                
+            newpl=(ticker,inven,Rpl,0.0,otime, wap)
+            pllist.append(newpl)
+        
     return(newtup,pllist)
-    
-  
     
       
       
@@ -141,7 +149,7 @@ def updatePL(newtup,pllist):
 #inventory is negative, to cover short sell, upl use ask price; else use bid price.
 
 def showPL(pllist):
-    
+   
      apple=updateprice("AAPL")
      amazon=updateprice("AMZN")
      intel=updateprice("INTC")
@@ -151,25 +159,32 @@ def showPL(pllist):
      renewlist= [apple, amazon, intel,microsft,snapchat]
     
      for i, pltup in enumerate(pllist):
-        for j, listtup in enumerate(renewlist): 
-           if pltup[0] == listtup[0]:
-               temp=pltup
-               a,b,c,d,e,f =temp
-             
-               pllist= [i for i in pllist if i != temp]
-               #b is inventory, if b is long, upl use bid price; else upl use ask price
-               if b>0:
-                   d=(float(listtup[2])-f)*b
-                   newtup=(a,b,c,d,e,f)
+         for j, listtup in enumerate(renewlist): 
+         #if ticker pllist item exist in renewlist, update upl
+               if pltup[0] == listtup[0]:
+                       
+                       temp=pltup
+                       ticker,inventry,Rpl,Upl,time,wap=temp
+                     
+                       pllist= [i for i in pllist if i != temp]
+                       
+                       #For long position, upl use bid price
+                       if inventry>0:
+                           Upl=(listtup[2]-wap)*inventry
+                           
+                       #For short position, upl use ask price; else upl use ask price  
+                       elif inventry<0 :
+                           Upl=(wap-listtup[1])*inventry
+                       
+                       else: 
+                           Upl=0.0
+                           wap=0.0
                    
-               else:
-
-                   d=(f-float(listtup[1]))*b
-                   newtup=(a,b,c,d,e,f)
-               pllist.append(newtup)
-
+                       newtup=(ticker,inventry,Rpl,Upl,time,wap)    
+                       pllist.append(newtup)
      return(pllist)
 
+    
     
 if __name__=="__main__":
     
@@ -192,85 +207,85 @@ if __name__=="__main__":
     option=1 
     
     while option != 4 :
-        print("\n")
-        print("======================================")
-        print("                 Menu                 ")
-        print("======================================")
-        print("             1.  Trade                ")
-        print("             2.  Show Blotter         ")
-        print("             3.  Show P/L             ")
-        print("             4.  Quit                 ")
-        print("======================================")
-        
-        #catch a wrong input at one times 
-        while True:
-            try:
-                 option = int(input("Please enter a number (1-4): "))  
-                 break
-            except ValueError:
-                 print("Wrong input! Try again.")
-                     
-        while(option<1 or option >4) :
-            print("Wrong number! Try again.")
             print("\n")
-            option = int(input("Please enter a number (1-4): ")) 
-        
-        
-        #The user will then be given the list of 5 equities they can trade and be allowed to pick one and state a quantity. 
-        #The user is then asked to confirm the trade at the market ask price scraped from Yahoo.
-        if (option==1): 
-            hist,pl,account= Trade(hist,pl,account)
+            print("======================================")
+            print("                 Menu                 ")
+            print("======================================")
+            print("             1.  Trade                ")
+            print("             2.  Show Blotter         ")
+            print("             3.  Show P/L             ")
+            print("             4.  Quit                 ")
+            print("======================================")
             
-            print("_________________________________________________")
-
+            #catch a wrong input at one times 
+            while True:
+                try:
+                     option = int(input("Please enter a number (1-4): "))  
+                     break
+                except ValueError:
+                     print("Wrong input! Try again.")
+                         
+            while(option<1 or option >4) :
+                print("Wrong number! Try again.")
+                print("\n")
+                option = int(input("Please enter a number (1-4): ")) 
         
-        #Displays the trade blotter, a list of historic trades made by the user. The trade blotter will display
-        #the following trade data, with the most recent trade at the top
-        elif (option==2):
-            if not hist:
-                print("\n")
-                print("No trading record.")
-                print("\n")
-                print("Your cash account : ")
-                print(account)
-            else:    
-                history=pd.DataFrame(hist,columns = ['Side', 'Volumne','Ticker','Price','Cost','Time'])  
-                print("\n")
-                print("======================================")
-                print("            Trading History           ")
-                print("======================================")
-                print(history.iloc[::-1])
-            print("_________________________________________________")
-
-        #Displays the profit / loss statement. The P/L will display, 
-        #the following trade data, with the most recent trade at the top 
-        #Ticker, Position, Current Market Price, VWAP, UPL (Unrealized P/L), RPL (Realized P/L)
         
-        elif (option==3):
-            if not hist:
-                print("\n")
-                print("No trading record.")
-                print("\n")
-                print("Your cash account : ")
-                print(account)
-            else:
-                pl=showPL(pl)
-                print("\n")
-                print("======================================")
-                print("              Profit/Loss             ")
-                print("======================================")
-                pltable=pd.DataFrame(pl,columns = ['Ticker', 'Inventory', 'Rpl','Upl','Time','Wap'])
-                print(pltable.iloc[::-1])
-                print("\n")
-                print("Your cash account : ")
-                print(account)
+            #The user will then be given the list of 5 equities they can trade and be allowed to pick one and state a quantity. 
+            #The user is then asked to confirm the trade at the market ask price scraped from Yahoo.
+            if (option==1): 
+                hist,pl,account= Trade(hist,pl,account)
                 
-            print("_________________________________________________")   
-                
-        #Quit when option==4 
-        else: 
-            print("Good Luck!")
-            print("_________________________________________________")
+                print("_________________________________________________")
+
             
+            #Displays the trade blotter, a list of historic trades made by the user. The trade blotter will display
+            #the following trade data, with the most recent trade at the top
+            elif (option==2):
+                if not hist:
+                    print("\n")
+                    print("No trading record.")
+                    print("\n")
+                    print("Your cash account : ")
+                    print(account)
+                else:    
+                    history=pd.DataFrame(hist,columns = ['Side', 'Volumne','Ticker','Price','Cost','Time'])  
+                    print("\n")
+                    print("======================================")
+                    print("            Trading History           ")
+                    print("======================================")
+                    print(history.iloc[::-1])
+                print("_________________________________________________")
+
+            #Displays the profit / loss statement. The P/L will display, 
+            #the following trade data, with the most recent trade at the top 
+            #Ticker, Position, Current Market Price, VWAP, UPL (Unrealized P/L), RPL (Realized P/L)
+            
+            elif (option==3):
+                if not hist:
+                    print("\n")
+                    print("No trading record.")
+                    print("\n")
+                    print("Your cash account : ")
+                    print(account)
+                else:
+                    pl=showPL(pl)
+                    print("\n")
+                    print("======================================")
+                    print("              Profit/Loss             ")
+                    print("======================================")
+                    pltable=pd.DataFrame(pl,columns = ['Ticker', 'Inventory', 'Rpl','Upl','Time','Wap'])
+                    print(pltable.iloc[::-1])
+                    print("\n")
+                    print("Your cash account : ")
+                    print(account)
+                    
+                print("_________________________________________________")   
+                    
+            #Quit when option==4 
+            else: 
+                print("Good Luck!")
+                print("_________________________________________________")
+                
 
  
